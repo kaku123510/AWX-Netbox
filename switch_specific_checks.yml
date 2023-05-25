@@ -1,0 +1,47 @@
+---
+- name: Switch-Specific Checks
+  hosts: switches
+  gather_facts: false
+
+  tasks:
+    - name: Get Device Information from Netbox
+      community.netbox.netbox_device_info:
+        url: "{{ netbox_url }}"
+        token: "{{ netbox_token }}"
+      register: netbox_info
+
+    - name: Define Switch-Specific Checks
+      set_fact:
+        switch_checks:
+          - name: VLAN10 IP Matches Netbox
+            command: "show interfaces vlan 10 | include Internet address is"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].interfaces.vlan10.ip }}"
+          - name: 802.1x Enabled on Access Ports
+            command: "show authentication sessions interface"
+            expected_output: ""
+          - name: STP Root Bridge
+            command: "show spanning-tree | include Root ID"
+            expected_output: "This switch is root"
+          - name: VLAN Filtering
+            command: "show running-config | include switchport trunk allowed"
+            expected_output: ""
+          - name: DHCP Snooping Trust
+            command: "show running-config | include dhcp snooping trust"
+            expected_output: "applied"
+          - name: Config Register
+            command: "show version | include Configuration register"
+            expected_output: "0x102"
+          # ... other switch-specific checks ...
+
+    - name: Run Switch-Specific Checks
+      ios_command:
+        commands: "{{ switch_checks | map(attribute='command') | list }}"
+      register: switch_check_results
+
+    - name: Generate HTML Report for Switch-Specific Checks
+      community.general.template:
+        src: switch_specific_checks_report.j2
+        dest: "/tmp/switch_specific_checks_report.html"
+        vars:
+          netbox_info: "{{ netbox_info }}"
+          check_results: "{{ switch_check_results.stdout_lines }}"
