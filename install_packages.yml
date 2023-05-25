@@ -1,0 +1,14 @@
+---
+- name: Install Required Packages
+  hosts: localhost
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Install Packages
+      apt:
+        name:
+          - python3-netaddr
+          - python3-pyopenssl
+          - pdftk
+        state: present
