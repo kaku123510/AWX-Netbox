@@ -1,0 +1,53 @@
+---
+- name: General Checks
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Get Device Information from Netbox
+      community.netbox.netbox_device_info:
+        url: "{{ netbox_url }}"
+        token: "{{ netbox_token }}"
+      register: netbox_info
+
+    - name: Define General Checks
+      set_fact:
+        general_checks:
+          - name: Firmware Matches NEC Standard
+            command: "show version | include NEC"
+            expected_output: "NEC standard firmware"
+          - name: Hostname Matches Netbox
+            command: "show running-config | include hostname"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].name }}"
+          - name: Interface Description Exists
+            command: "show interfaces description"
+            expected_output: ""
+          - name: AAA Configured (RADIUS & TACACS)
+            command: "show running-config | include aaa"
+            expected_output: "RADIUS"
+          - name: SNMP Configured
+            command: "show running-config | include snmp-server"
+            expected_output: "configured"
+          - name: NEC Base Config Applied
+            command: "show running-config | include nec"
+            expected_output: "applied"
+          - name: NTP Synchronized
+            command: "show ntp status | include Clock is synchronized"
+            expected_output: "synchronized"
+          - name: Interface Health
+            command: "show interfaces | include error"
+            expected_output: ""
+          # ... other general checks ...
+
+    - name: Run General Checks
+      ios_command:
+        commands: "{{ general_checks | map(attribute='command') | list }}"
+      register: general_check_results
+
+    - name: Generate HTML Report for General Checks
+      community.general.template:
+        src: general_checks_report.j2
+        dest: "/tmp/general_checks_report.html"
+        vars:
+          netbox_info: "{{ netbox_info }}"
+          check_results: "{{ general_check_results.stdout_lines }}"
