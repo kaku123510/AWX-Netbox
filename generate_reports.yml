@@ -1,0 +1,108 @@
+---
+- name: Generate Reports
+  hosts: all
+  gather_facts: false
+
+  vars:
+    report_dir: "/tmp/netbox_audit"
+
+  tasks:
+    - name: Get Device Information from Netbox
+      community.netbox.netbox_device_info:
+        url: "{{ netbox_url }}"
+        token: "{{ netbox_token }}"
+      register: netbox_info
+
+    - name: Define Router-Specific Checks
+      set_fact:
+        router_checks:
+          - name: Lo62 IP Matches Netbox
+            command: "show interfaces lo62 | include Internet address is"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].interfaces.lo62.ip }}"
+          - name: MPLS LDP Neighbors
+            command: "show mpls ldp neighbor"
+            expected_output: "2x MPLS LDP neighbors found"
+          # ... other router-specific checks ...
+
+    - name: Define Switch-Specific Checks
+      set_fact:
+        switch_checks:
+          - name: VLAN10 IP Matches Netbox
+            command: "show interfaces vlan 10 | include Internet address is"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].interfaces.vlan10.ip }}"
+          - name: 802.1x Enabled on Access Ports
+            command: "show authentication sessions interface"
+            expected_output: ""
+          # ... other switch-specific checks ...
+
+    - name: Define General Checks
+      set_fact:
+        general_checks:
+          - name: Firmware Matches NEC Standard
+            command: "show version | include NEC"
+            expected_output: "NEC standard firmware"
+          - name: Hostname Matches Netbox
+            command: "show running-config | include hostname"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].name }}"
+          - name: Interface Description Exists
+            command: "show interfaces description"
+            expected_output: ""
+          - name: AAA Configured (RADIUS & TACACS)
+            command: "show running-config | include aaa"
+            expected_output: "RADIUS"
+          - name: SNMP Configured
+            command: "show running-config | include snmp-server"
+            expected_output: "configured"
+          - name: NEC Base Config Applied
+            command: "show running-config | include nec"
+            expected_output: "applied"
+          - name: NTP Synchronized
+            command: "show ntp status | include Clock is synchronized"
+            expected_output: "synchronized"
+          - name: Interface Health
+            command: "show interfaces | include error"
+            expected_output: ""
+          # ... other general checks ...
+
+    - name: Run Router-Specific Checks
+      when: inventory_hostname in netbox_info.devices and netbox_info.devices[inventory_hostname].device_role.name == "Router"
+      ios_command:
+        commands: "{{ router_checks | map(attribute='command') | list }}"
+      register: router_check_results
+
+    - name: Run Switch-Specific Checks
+      when: inventory_hostname in netbox_info.devices and netbox_info.devices[inventory_hostname].device_role.name == "Switch"
+      ios_command:
+        commands: "{{ switch_checks | map(attribute='command') | list }}"
+      register: switch_check_results
+
+    - name: Run General Checks
+      ios_command:
+        commands: "{{ general_checks | map(attribute='command') | list }}"
+      register: general_check_results
+
+    - name: Generate HTML Report for Router
+      when: inventory_hostname in netbox_info.devices and netbox_info.devices[inventory_hostname].device_role.name == "Router"
+      community.general.template:
+        src: router_report.j2
+        dest: "{{ report_dir }}/{{ inventory_hostname }}.html"
+        vars:
+          netbox_info: "{{ netbox_info }}"
+          check_results: "{{ router_check_results.stdout_lines }}"
+
+    - name: Generate HTML Report for Switch
+      when: inventory_hostname in netbox_info.devices and netbox_info.devices[inventory_hostname].device_role.name == "Switch"
+      community.general.template:
+        src: switch_report.j2
+        dest: "{{ report_dir }}/{{ inventory_hostname }}.html"
+        vars:
+          netbox_info: "{{ netbox_info }}"
+          check_results: "{{ switch_check_results.stdout_lines }}"
+
+    - name: Generate HTML Report for General Checks
+      community.general.template:
+        src: general_report.j2
+        dest: "{{ report_dir }}/general.html"
+        vars:
+          netbox_info: "{{ netbox_info }}"
+          check_results: "{{ general_check_results.stdout_lines }}"   
