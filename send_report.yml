@@ -1,0 +1,20 @@
+---
+- name: Send Report
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Print Audit Report Path
+      debug:
+        var: "/tmp/netbox_audit_report.pdf"
+
+    - name: Send Audit Report via Email
+      mail:
+        host: "{{ email_host }}"
+        port: "{{ email_port }}"
+        username: "{{ email_username }}"
+        password: "{{ email_password }}"
+        to: "{{ email_recipient }}"
+        subject: "Netbox Audit Report"
+        attach:
+          - "/tmp/netbox_audit_report.pdf"
