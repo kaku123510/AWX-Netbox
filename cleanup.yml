@@ -1,0 +1,22 @@
+---
+- name: Clean Up
+  hosts: localhost
+  gather_facts: false
+  become: true
+
+  vars:
+    report_dir: "/tmp/netbox_audit"
+
+  tasks:
+    - name: Clean Up Report Directory
+      file:
+        path: "{{ report_dir }}"
+        state: absent
+
+    - name: Remove Unused Packages
+      apt:
+        name:
+          - python3-netaddr
+          - python3-pyopenssl
+          - pdftk
+        state: absent
