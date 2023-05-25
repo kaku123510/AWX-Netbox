@@ -1,0 +1,13 @@
+---
+- name: Combine Reports
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    report_dir: "/tmp/netbox_audit"
+
+  tasks:
+    - name: Combine HTML Reports into PDF
+      community.general.pdftk:
+        input_files: "{{ report_dir }}/*.html"
+        output_file: "/tmp/netbox_audit_report.pdf"
