@@ -1,0 +1,59 @@
+---
+- name: Router-Specific Checks
+  hosts: routers
+  gather_facts: false
+
+  tasks:
+    - name: Get Device Information from Netbox
+      community.netbox.netbox_device_info:
+        url: "{{ netbox_url }}"
+        token: "{{ netbox_token }}"
+      register: netbox_info
+
+    - name: Define Router-Specific Checks
+      set_fact:
+        router_checks:
+          - name: Lo62 IP Matches Netbox
+            command: "show interfaces lo62 | include Internet address is"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].interfaces.lo62.ip }}"
+          - name: MPLS LDP Neighbors
+            command: "show mpls ldp neighbor"
+            expected_output: "2x MPLS LDP neighbors found"
+          - name: BGP Route Reflectors
+            command: "show bgp summary | include Route reflector"
+            expected_output: "2 Route Reflectors found"
+          - name: SVI Configs
+            command: "show interfaces vlan | include SVI"
+            expected_output: ""
+          - name: Config Register
+            command: "show version | include Configuration register"
+            expected_output: "0x2102"
+          - name: Packet Loss
+            command: "ping {{ test_server }} repeat 1000"
+            expected_output: "0% packet loss"
+          - name: Traceroute
+            command: "traceroute {{ test_server }}"
+            expected_output: ""
+          - name: WAN IP Matches Netbox
+            command: "show interfaces wan | include Internet address is"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].interfaces.wan.ip }}"
+          - name: WAN Bandwidth Matches Netbox
+            command: "show interfaces wan | include Bandwidth"
+            expected_output: "{{ netbox_info.devices[inventory_hostname].interfaces.wan.bandwidth }}"
+          - name: L1 Queuing Policies
+            command: "show policy-map interface"
+            expected_output: "both policies present and applied"
+          # ... other router-specific checks ...
+
+    - name: Run Router-Specific Checks
+      ios_command:
+        commands: "{{ router_checks | map(attribute='command') | list }}"
+      register: router_check_results
+
+    - name: Generate HTML Report for Router-Specific Checks
+      community.general.template:
+        src: router_specific_checks_report.j2
+        dest: "/tmp/router_specific_checks_report.html"
+        vars:
+          netbox_info: "{{ netbox_info }}"
+          check_results: "{{ router_check_results.stdout_lines }}"
